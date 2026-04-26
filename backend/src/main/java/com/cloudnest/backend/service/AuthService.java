@@ -23,29 +23,86 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
+    private final org.springframework.security.authentication.AuthenticationManager authenticationManager;
+    private final org.springframework.context.ApplicationContext applicationContext;
+
+    public AuthResponse login(com.cloudnest.backend.dto.LoginRequest request) {
+        if (request.getSubdomain() == null || request.getSubdomain().isEmpty()) {
+            throw new RuntimeException("Subdomain is required for login");
+        }
+        
+        Tenant tenant = tenantRepository.findBySubdomain(request.getSubdomain())
+                .orElseThrow(() -> new RuntimeException("Tenant not found for subdomain: " + request.getSubdomain()));
+                
+        TenantContext.setCurrentTenant(tenant.getId().toString());
+
+        try {
+            authenticationManager.authenticate(
+                    new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                            request.getEmail(),
+                            request.getPassword()
+                    )
+            );
+            User user = userRepository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            com.cloudnest.backend.security.UserDetailsImpl userDetails = new com.cloudnest.backend.security.UserDetailsImpl(user);
+            String jwtToken = jwtUtils.generateToken(userDetails, user.getTenantId().toString());
+            return new AuthResponse(jwtToken, "Login successful");
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    // Remove @Transactional from the main method to allow multiple transactions
+    public AuthResponse registerTenant(RegisterRequest request) {
+        AuthService proxy = org.springframework.beans.factory.BeanFactoryUtils.beanOfType(
+            applicationContext, AuthService.class
+        );
+
+        // 1. Create Tenant (commits immediately)
+        Tenant tenant = proxy.createTenant(request);
+
+        // Switch context to new tenant
+        TenantContext.setCurrentTenant(tenant.getId().toString());
+
+        // 2. Create User and Role in a new transaction
+        User user;
+        try {
+            user = proxy.createTenantSetup(request);
+        } finally {
+            TenantContext.clear();
+        }
+
+        // Generate Token
+        com.cloudnest.backend.security.UserDetailsImpl userDetails = new com.cloudnest.backend.security.UserDetailsImpl(user);
+        String jwtToken = jwtUtils.generateToken(userDetails, tenant.getId().toString());
+
+        return new AuthResponse(jwtToken, "Tenant registered successfully");
+    }
 
     @Transactional
-    public AuthResponse registerTenant(RegisterRequest request) {
+    public Tenant createTenant(RegisterRequest request) {
         if (tenantRepository.findBySubdomain(request.getSubdomain()).isPresent()) {
             throw new RuntimeException("Subdomain already exists");
         }
-
-        // 1. Create Tenant
         Tenant tenant = Tenant.builder()
                 .name(request.getCompanyName())
                 .subdomain(request.getSubdomain())
                 .status("ACTIVE")
                 .build();
-        tenant = tenantRepository.save(tenant);
+        return tenantRepository.save(tenant);
+    }
 
-        // Switch context to new tenant
-        TenantContext.setCurrentTenant(tenant.getId().toString());
-
+    @Transactional
+    public User createTenantSetup(RegisterRequest request) {
         // 2. Create Default Admin Role
         Role adminRole = Role.builder()
                 .name("TENANT_ADMIN")
                 .description("Administrator for the tenant")
-                .tenantId(tenant.getId())
                 .build();
         roleRepository.save(adminRole);
 
@@ -55,16 +112,7 @@ public class AuthService {
                 .password(passwordEncoder.encode(request.getPassword()))
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
-                .tenantId(tenant.getId())
                 .build();
-        userRepository.save(user);
-
-        // Generate Token
-        com.cloudnest.backend.security.UserDetailsImpl userDetails = new com.cloudnest.backend.security.UserDetailsImpl(user);
-        String jwtToken = jwtUtils.generateToken(userDetails, tenant.getId().toString());
-
-        TenantContext.clear();
-
-        return new AuthResponse(jwtToken, "Tenant registered successfully");
+        return userRepository.save(user);
     }
 }

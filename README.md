@@ -17,7 +17,7 @@ This platform uses a **Shared Database, Shared Schema** architecture. Strict dat
 - **Caching & Storage**: Redis, MinIO (S3 compatible)
 - **Containerization**: Docker & Docker Compose
 
-## 🚀 Getting Started
+## 🚀 Quickstart Setup
 
 Ensure you have Docker and Docker Compose installed.
 
@@ -41,6 +41,12 @@ Ensure you have Docker and Docker Compose installed.
 3. **Access the application:**
    - **Frontend UI**: Open `http://localhost` in your browser to view the highly aesthetic, Tailwind-powered SaaS Dashboard.
    - **Backend API**: `http://localhost:8080/api/v1/...`
+
+4. **Testing the connection:**
+   - When you access the frontend at `http://localhost`, click on "Sign up".
+   - Register a new tenant with a custom `subdomain` (e.g. `mycompany`).
+   - Log in using your email, password, and the same `subdomain`.
+   - Access the "Products" tab to see real-time data fetched from the backend.
 
 ## 🔑 Core Features Implemented
 

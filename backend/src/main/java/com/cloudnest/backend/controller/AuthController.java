@@ -18,4 +18,9 @@ public class AuthController {
     public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
         return ResponseEntity.ok(authService.registerTenant(request));
     }
+
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@RequestBody com.cloudnest.backend.dto.LoginRequest request) {
+        return ResponseEntity.ok(authService.login(request));
+    }
 }
